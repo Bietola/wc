@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 /**********************/
-/* Parser XML element */
+/* XML element struct */
 /**********************/
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -12,9 +12,10 @@ pub struct Element {
     children: Vec<Element>,
 }
 
-/***********************/
-/* Generic parser type */
-/***********************/
+/****************/
+/* Parser trait */
+/****************/
+
 type ParseResult<'a, T> = Result<(&'a str, T), &'a str>;
 
 pub trait Parser<'a, T> {
@@ -30,10 +31,11 @@ where
     }
 }
 
-/**********************/
-/* Parser combinators */
-/**********************/
+/***********/
+/* Parsers */
+/***********/
 
+/// Match a specified literal string
 pub fn literal<'a>(expected: &'static str) -> impl Parser<'a, ()> {
     move |input| {
         let re = Regex::new(&format!("^{}.*", expected)).unwrap();
@@ -46,6 +48,7 @@ pub fn literal<'a>(expected: &'static str) -> impl Parser<'a, ()> {
     }
 }
 
+/// Match classic pascal-like identifier (`^[a-zA-z][\w\d-]*`)
 pub fn identifier(input: &str) -> ParseResult<String> {
     lazy_static! {
         static ref RE: Regex = Regex::new(r"^[a-zA-z][\w\d-]*").unwrap();
@@ -60,6 +63,7 @@ pub fn identifier(input: &str) -> ParseResult<String> {
     }
 }
 
+/// Match any string surrounded by quotes
 pub fn quoted_string(input: &str) -> ParseResult<String> {
     right(
         literal("\""),
@@ -73,6 +77,8 @@ pub fn quoted_string(input: &str) -> ParseResult<String> {
     .parse(input)
 }
 
+/// Match first using `parser1` and then `parser2` (in that order), then return the results of both
+/// in a pair wrapped in a `ParseResult`
 pub fn pair<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, (R1, R2)>
 where
     P1: Parser<'a, R1>,
@@ -87,6 +93,7 @@ where
     }
 }
 
+/// Functor-like `map` implementation for the `Parser` type
 pub fn map<'a, P, F, A, B>(parser: P, fun: F) -> impl Parser<'a, B>
 where
     F: Fn(A) -> B,
@@ -98,6 +105,7 @@ where
     }
 }
 
+/// Like `pair`, but discard the result of the left parser (`parser1`)
 pub fn right<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, R2>
 where
     P1: Parser<'a, R1>,
@@ -106,6 +114,7 @@ where
     map(pair(parser1, parser2), |(_, rhs)| rhs)
 }
 
+/// Like `pair`, but discard the result of the right parser (`parser2`)
 pub fn left<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, R1>
 where
     P1: Parser<'a, R1>,
@@ -114,6 +123,7 @@ where
     map(pair(parser1, parser2), |(lhs, _)| lhs)
 }
 
+/// Match anything containing at least `required_num` recurring instances of `parser` matches
 pub fn at_least<'a, P, A>(parser: P, required_num: usize) -> impl Parser<'a, Vec<A>>
 where
     P: Parser<'a, A>,
@@ -134,6 +144,7 @@ where
     }
 }
 
+/// Match zero or more instances of `parser` matches
 pub fn zero_or_more<'a, P, A>(parser: P) -> impl Parser<'a, Vec<A>>
 where
     P: Parser<'a, A>,
@@ -141,6 +152,7 @@ where
     at_least(parser, 0)
 }
 
+/// Match one or more instances of `parser` matches
 pub fn one_or_more<'a, P, A>(parser: P) -> impl Parser<'a, Vec<A>>
 where
     P: Parser<'a, A>,
@@ -148,6 +160,8 @@ where
     at_least(parser, 1)
 }
 
+/// Match next instance of `parser` match and pipe result to `the_pred`; return valid match only if `the_pred`
+/// is valid on said result
 pub fn pred<'a, P, A, F>(parser: P, the_pred: F) -> impl Parser<'a, A>
 where
     P: Parser<'a, A>,
@@ -165,6 +179,7 @@ where
     }
 }
 
+/// Match any UTF character
 pub fn any_char<'a>(input: &'a str) -> ParseResult<'a, char> {
     match input.chars().next() {
         Some(c) => Ok((&input[c.len_utf8()..], c)),
@@ -172,18 +187,22 @@ pub fn any_char<'a>(input: &'a str) -> ParseResult<'a, char> {
     }
 }
 
+/// Match any whitespace character (corresponding to the `char::is_whitespace` funcion)
 pub fn whitespace_char<'a>(input: &'a str) -> ParseResult<'a, char> {
     pred(any_char, |c| c.is_whitespace()).parse(input)
 }
 
+/// Match one ore more spaces
 pub fn space1<'a>() -> impl Parser<'a, Vec<char>> {
     one_or_more(whitespace_char)
 }
 
+/// Match zero ore more spaces
 pub fn space0<'a>() -> impl Parser<'a, Vec<char>> {
     one_or_more(whitespace_char)
 }
 
+/// Match XML element into dedicated structure (`Element`)
 pub fn xml_ele<'a>(input: &'a str) -> ParseResult<'a, Element> {
     // Support parsers. Their name indicate what they parse
     let attr_pair = pair(identifier, right(literal("="), quoted_string));
@@ -199,6 +218,10 @@ pub fn xml_ele<'a>(input: &'a str) -> ParseResult<'a, Element> {
     })
     .parse(input)
 }
+
+/*********/
+/* Tests */
+/*********/
 
 #[cfg(test)]
 mod tests {
