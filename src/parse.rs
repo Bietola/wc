@@ -1,22 +1,11 @@
 use lazy_static::lazy_static;
 use regex::Regex;
 
-/**********************/
-/* XML element struct */
-/**********************/
-
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct Element {
-    name: String,
-    attributes: Vec<(String, String)>,
-    children: Vec<Element>,
-}
-
 /****************/
 /* Parser trait */
 /****************/
 
-type ParseResult<'a, T> = Result<(&'a str, T), &'a str>;
+pub type ParseResult<'a, T> = Result<(&'a str, T), &'a str>;
 
 pub trait Parser<'a, T> {
     fn parse(&self, input: &'a str) -> ParseResult<'a, T>;
@@ -31,9 +20,9 @@ where
     }
 }
 
-/***********/
-/* Parsers */
-/***********/
+/*************************/
+/* Free function parsers */
+/*************************/
 
 /// Match a specified literal string
 pub fn literal<'a>(expected: &'static str) -> impl Parser<'a, ()> {
@@ -180,7 +169,7 @@ where
 }
 
 /// Match any UTF character
-pub fn any_char<'a>(input: &'a str) -> ParseResult<'a, char> {
+pub fn any_char(input: &str) -> ParseResult<'_, char> {
     match input.chars().next() {
         Some(c) => Ok((&input[c.len_utf8()..], c)),
         None => Err(input),
@@ -188,7 +177,7 @@ pub fn any_char<'a>(input: &'a str) -> ParseResult<'a, char> {
 }
 
 /// Match any whitespace character (corresponding to the `char::is_whitespace` funcion)
-pub fn whitespace_char<'a>(input: &'a str) -> ParseResult<'a, char> {
+pub fn whitespace_char(input: &str) -> ParseResult<'_, char> {
     pred(any_char, |c| c.is_whitespace()).parse(input)
 }
 
@@ -200,23 +189,6 @@ pub fn space1<'a>() -> impl Parser<'a, Vec<char>> {
 /// Match zero ore more spaces
 pub fn space0<'a>() -> impl Parser<'a, Vec<char>> {
     one_or_more(whitespace_char)
-}
-
-/// Match XML element into dedicated structure (`Element`)
-pub fn xml_ele<'a>(input: &'a str) -> ParseResult<'a, Element> {
-    // Support parsers. Their name indicate what they parse
-    let attr_pair = pair(identifier, right(literal("="), quoted_string));
-
-    let attr_lst = zero_or_more(right(whitespace_char, attr_pair));
-
-    let ele = right(literal("<"), pair(identifier, left(attr_lst, literal(">"))));
-
-    map(ele, |(name, attributes)| Element {
-        name,
-        attributes,
-        ..Default::default()
-    })
-    .parse(input)
 }
 
 /*********/
@@ -348,20 +320,5 @@ mod tests {
         let ex_str = r#""hello there", he said"#;
 
         assert_eq!(quoted_string(ex_str), Ok(("", ex_str.into())));
-    }
-
-    #[test]
-    fn parse_element_with_attributes() {
-        assert_eq!(
-            xml_ele(r#"<single-element attribute="value">"#),
-            Ok((
-                "",
-                Element {
-                    name: "single-element".into(),
-                    attributes: vec![("attribute".into(), "value".into())],
-                    ..Default::default()
-                }
-            )),
-        );
     }
 }
