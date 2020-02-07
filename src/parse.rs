@@ -312,13 +312,7 @@ mod tests {
     fn quoted_string_short_sentence() {
         let ex_str = r#""hello there""#;
 
-        assert_eq!(quoted_string(ex_str), Ok(("", ex_str.into())));
-    }
-
-    #[test]
-    fn quoted_string_nested_quotes() {
-        let ex_str = r#""hello there", he said"#;
-
-        assert_eq!(quoted_string(ex_str), Ok(("", ex_str.into())));
+        // TODO: check a more coincise way of doing this
+        assert_eq!(quoted_string(ex_str), Ok(("", (&ex_str[1..ex_str.len() - 1]).into())));
     }
 }
