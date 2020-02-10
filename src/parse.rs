@@ -11,7 +11,7 @@ pub trait Parser<'a, Output> {
     fn parse(&self, input: &'a str) -> ParseResult<'a, Output>;
 
     /// Same to free-function equivalent, but encloses resulting parser in dynamic type (`BoxedParser`).
-    /// Useful for when type length gets out of hand.
+    /// Useful for when type length and/or compilation times get out of hand.
     fn map<F, NewOutput>(self, fun: F) -> BoxedParser<'a, NewOutput>
     where
         Self: Sized + 'a,
@@ -20,6 +20,17 @@ pub trait Parser<'a, Output> {
         F: Fn(Output) -> NewOutput + 'a,
     {
         BoxedParser::new(map(self, fun))
+    }
+
+    /// Same to free-function equivalent, but encloses resulting parser in dynamic type (`BoxedParser`).
+    /// Useful for when type length and/or compilation times get out of hand.
+    fn pred<Pred>(self, the_pred: Pred) -> BoxedParser<'a, Output>
+    where
+        Self: Sized + 'a,
+        Output: 'a,
+        Pred: Fn(&Output) -> bool + 'a,
+    {
+        BoxedParser::new(pred(self, the_pred))
     }
 }
 
@@ -92,7 +103,7 @@ pub fn quoted_string<'a>() -> impl Parser<'a, String> {
     right(
         literal("\""),
         left(
-            zero_or_more(pred(any_char, |c| *c != '\"')),
+            zero_or_more(any_char.pred(|c| *c != '\"')),
             literal("\""),
         ),
     ).map(|output| output.into_iter().collect())
@@ -211,7 +222,7 @@ pub fn any_char(input: &str) -> ParseResult<'_, char> {
 
 /// Match any whitespace character (corresponding to the `char::is_whitespace` funcion)
 pub fn whitespace_char(input: &str) -> ParseResult<'_, char> {
-    pred(any_char, |c| c.is_whitespace()).parse(input)
+    any_char.pred(|c| c.is_whitespace()).parse(input)
 }
 
 /// Match one ore more spaces
