@@ -18,7 +18,7 @@ pub fn xml_ele(input: &str) -> ParseResult<'_, Element> {
 
     let attr_lst = zero_or_more(right(space1(), attr_pair));
 
-    let ele = right(literal("<"), pair(identifier, left(attr_lst, literal(">"))));
+    let ele = right(literal("<"), pair(identifier, left(attr_lst, literal("\\>"))));
     
     map(ele, |(name, attributes)| Element {
         name,
@@ -34,7 +34,7 @@ mod tests {
     #[test]
     fn parse_element_with_attributes() {
         assert_eq!(
-            xml_ele(r#"<single-element attribute="value">"#),
+            xml_ele(r#"<single-element attribute="value"\>"#),
             Ok((
                 "",
                 Element {
