@@ -7,8 +7,20 @@ use regex::Regex;
 
 pub type ParseResult<'a, T> = Result<(&'a str, T), &'a str>;
 
-pub trait Parser<'a, T> {
-    fn parse(&self, input: &'a str) -> ParseResult<'a, T>;
+pub trait Parser<'a, Output> {
+    fn parse(&self, input: &'a str) -> ParseResult<'a, Output>;
+
+    /// Same to free-function equivalent, but encloses resulting parser in dynamic type (`BoxedParser`).
+    /// Useful for when type length gets out of hand.
+    fn map<F, NewOutput>(self, fun: F) -> BoxedParser<'a, NewOutput>
+    where
+        Self: Sized + 'a,
+        Output: 'a,
+        NewOutput: 'a,
+        F: Fn(Output) -> NewOutput + 'a,
+    {
+        BoxedParser::new(map(self, fun))
+    }
 }
 
 impl<'a, F, T> Parser<'a, T> for F
@@ -17,6 +29,29 @@ where
 {
     fn parse(&self, input: &'a str) -> ParseResult<'a, T> {
         self(input)
+    }
+}
+
+/************************************************************/
+/* Dynamic parser for when static types get too complicated */
+/************************************************************/
+
+pub struct BoxedParser<'a, Output> {
+    parser: Box<dyn Parser<'a, Output> + 'a>,
+}
+
+impl<'a, Output> BoxedParser<'a, Output> {
+    fn new<P>(parser: P) -> Self
+    where
+        P: Parser<'a, Output> + 'a,
+    {
+        Self { parser: Box::new(parser) }
+    }
+}
+
+impl<'a, Output> Parser<'a, Output> for BoxedParser<'a, Output> {
+    fn parse(&self, input: &'a str) -> ParseResult<'a, Output> {
+        self.parser.parse(input)
     }
 }
 
@@ -53,17 +88,14 @@ pub fn identifier(input: &str) -> ParseResult<String> {
 }
 
 /// Match any string surrounded by quotes
-pub fn quoted_string(input: &str) -> ParseResult<String> {
+pub fn quoted_string<'a>() -> impl Parser<'a, String> {
     right(
         literal("\""),
         left(
-            map(zero_or_more(pred(any_char, |c| *c != '\"')), |output| {
-                output.into_iter().collect()
-            }),
+            zero_or_more(pred(any_char, |c| *c != '\"')),
             literal("\""),
         ),
-    )
-    .parse(input)
+    ).map(|output| output.into_iter().collect())
 }
 
 /// Match first using `parser1` and then `parser2` (in that order), then return the results of both
@@ -151,6 +183,7 @@ where
 
 /// Match next instance of `parser` match and pipe result to `the_pred`; return valid match only if `the_pred`
 /// is valid on said result
+/// TODO: use monad
 pub fn pred<'a, P, A, F>(parser: P, the_pred: F) -> impl Parser<'a, A>
 where
     P: Parser<'a, A>,
@@ -164,7 +197,7 @@ where
                 Err(input)
             }
         }
-        err @ Err(_) => err,
+        Err(err) => Err(err),
     }
 }
 
@@ -313,6 +346,9 @@ mod tests {
         let ex_str = r#""hello there""#;
 
         // TODO: check a more coincise way of doing this
-        assert_eq!(quoted_string(ex_str), Ok(("", (&ex_str[1..ex_str.len() - 1]).into())));
+        assert_eq!(
+            quoted_string().parse(ex_str),
+            Ok(("", (&ex_str[1..ex_str.len() - 1]).into()))
+        );
     }
 }

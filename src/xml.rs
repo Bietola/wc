@@ -14,18 +14,17 @@ pub struct Element {
 /// Match XML element into dedicated structure (`Element`)
 pub fn xml_ele(input: &str) -> ParseResult<'_, Element> {
     // Support parsers. Their name indicate what they parse
-    let attr_pair = pair(identifier, right(literal("="), quoted_string));
+    let attr_pair = pair(identifier, right(literal("="), quoted_string()));
 
-    let attr_lst = zero_or_more(right(whitespace_char, attr_pair));
+    let attr_lst = zero_or_more(right(space1(), attr_pair));
 
     let ele = right(literal("<"), pair(identifier, left(attr_lst, literal(">"))));
-
+    
     map(ele, |(name, attributes)| Element {
         name,
         attributes,
         ..Default::default()
-    })
-    .parse(input)
+    }).parse(input)
 }
 
 #[cfg(test)]
