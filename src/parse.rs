@@ -72,11 +72,14 @@ impl<'a, Output> Parser<'a, Output> for BoxedParser<'a, Output> {
 
 /// Match a specified literal string
 pub fn literal<'a>(expected: &'static str) -> impl Parser<'a, ()> {
-    move |input| {
-        let re = Regex::new(&format!("^{}.*", expected)).unwrap();
-
-        if re.is_match(input) {
-            Ok((&input[expected.len()..], ()))
+    move |input: &'a str| {
+        if let Some(found) = input.find(expected) {
+            // Parser must match `expected` string in first position of parsed sentence
+            if found == 0 {
+                Ok((&input[expected.len()..], ()))
+            } else {
+                Err(input)
+            }
         } else {
             Err(input)
         }
