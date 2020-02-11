@@ -56,7 +56,9 @@ impl<'a, Output> BoxedParser<'a, Output> {
     where
         P: Parser<'a, Output> + 'a,
     {
-        Self { parser: Box::new(parser) }
+        Self {
+            parser: Box::new(parser),
+        }
     }
 }
 
@@ -105,11 +107,9 @@ pub fn identifier(input: &str) -> ParseResult<String> {
 pub fn quoted_string<'a>() -> impl Parser<'a, String> {
     right(
         literal("\""),
-        left(
-            zero_or_more(any_char.pred(|c| *c != '\"')),
-            literal("\""),
-        ),
-    ).map(|output| output.into_iter().collect())
+        left(zero_or_more(any_char.pred(|c| *c != '\"')), literal("\"")),
+    )
+    .map(|output| output.into_iter().collect())
 }
 
 /// Match first using `parser1` and then `parser2` (in that order), then return the results of both
@@ -156,6 +156,20 @@ where
     P2: Parser<'a, R2>,
 {
     map(pair(parser1, parser2), |(lhs, _)| lhs)
+}
+
+/// Sorrounds center parser with two parsers, ignoring the sorrounding parsers
+pub fn sorround<'a, P1, P2, P3, R1, R2, R3>(
+    opening_par: P1,
+    center_par: P2,
+    closing_par: P3,
+) -> impl Parser<'a, R2>
+where
+    P1: Parser<'a, R1>,
+    P2: Parser<'a, R2>,
+    P3: Parser<'a, R3>,
+{
+    right(opening_par, left(center_par, closing_par))
 }
 
 /// Match anything containing at least `required_num` recurring instances of `parser` matches
