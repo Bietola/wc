@@ -18,13 +18,21 @@ pub fn xml_ele(input: &str) -> ParseResult<'_, Element> {
 
     let attr_lst = zero_or_more(right(space1(), attr_pair));
 
-    let ele = right(literal("<"), pair(identifier, left(attr_lst, literal("\\>"))));
-    
+    let ele = right(
+        literal("<"),
+        pair(identifier, left(attr_lst, literal("\\>"))),
+    );
+
     map(ele, |(name, attributes)| Element {
         name,
         attributes,
         ..Default::default()
-    }).parse(input)
+    })
+    .parse(input)
+}
+
+pub fn xml_tree(_input: &str) -> ParseResult<Element> {
+    unimplemented!()
 }
 
 #[cfg(test)]
@@ -44,5 +52,24 @@ mod tests {
                 }
             )),
         );
+    }
+
+    #[test]
+    fn parse_big_xml_tree() {
+        let str_tree = r#"
+            <parent attr="I'm an attribute">
+
+                <child1\>
+
+                <child2 name="child" last_name="two"\>
+
+                <big_child name="big child"\>
+                    <nested_child\>
+                <\big_child>
+
+            <\parent>
+        "#;
+
+        assert_eq!(xml_tree(str_tree), Ok(("", Default::default(),)));
     }
 }
