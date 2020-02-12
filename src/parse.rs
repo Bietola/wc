@@ -32,6 +32,18 @@ pub trait Parser<'a, Output> {
     {
         BoxedParser::new(pred(self, the_pred))
     }
+
+    /// Same to free-function equivalent, but encloses resulting parser in dynamic type (`BoxedParser`).
+    /// Useful for when type length and/or compilation times get out of hand.
+    fn and_then<NewOutput, F>(self, fun: F) -> BoxedParser<'a, NewOutput>
+    where
+        Self: Sized + 'a,
+        Output: 'a,
+        NewOutput: 'a,
+        F: Fn(Output) -> BoxedParser<'a, NewOutput> + 'a,
+    {
+        BoxedParser::new(and_then(self, fun))
+    }
 }
 
 impl<'a, F, T> Parser<'a, T> for F
@@ -129,6 +141,7 @@ where
 }
 
 /// Functor-like `map` implementation for the `Parser` type
+/// TODO: write what this actually does
 pub fn map<'a, P, F, A, B>(parser: P, fun: F) -> impl Parser<'a, B>
 where
     F: Fn(A) -> B,
@@ -136,6 +149,19 @@ where
 {
     move |input| match parser.parse(input) {
         Ok((rest, res)) => Ok((rest, fun(res))),
+        Err(err) => Err(err),
+    }
+}
+
+/// Monad-like `>>` implementation for the `Parser` type
+/// TODO: write what this actually does
+pub fn and_then<'a, P1, R1, R2, F>(parser: P1, fun: F) -> impl Parser<'a, R2>
+where
+    P1: Parser<'a, R1>,
+    F: Fn(R1) -> BoxedParser<'a, R2>,
+{
+    move |input| match parser.parse(input) {
+        Ok((rest, res)) => fun(res).parse(rest),
         Err(err) => Err(err),
     }
 }
@@ -158,7 +184,7 @@ where
     map(pair(parser1, parser2), |(lhs, _)| lhs)
 }
 
-/// Sorrounds center parser with two parsers, ignoring the sorrounding parsers
+/// Sorrounds center parser with two parsers, ignoring the sorrounding parsers.
 pub fn sorround<'a, P1, P2, P3, R1, R2, R3>(
     opening_par: P1,
     center_par: P2,
@@ -170,6 +196,27 @@ where
     P3: Parser<'a, R3>,
 {
     right(opening_par, left(center_par, closing_par))
+}
+
+/// Matches like `parser`, but allows matches to be sorrounded by albitrary whitespace.
+pub fn whitespace_wrap<'a, P, Output>(parser: P) -> impl Parser<'a, Output>
+where
+    P: Parser<'a, Output>,
+{
+    sorround(space0(), parser, space0())
+}
+
+/// Returns parser that tries to match using `parser1` first and, if it fails, using `parser2`
+/// later. If all match attempts fail, the parse error from `parser2` is issued.
+pub fn either<'a, P1, P2, R>(parser1: P1, parser2: P2) -> impl Parser<'a, R>
+where
+    P1: Parser<'a, R>,
+    P2: Parser<'a, R>,
+{
+    move |input| match parser1.parse(input) {
+        ok @ Ok(_) => ok,
+        Err(_) => parser2.parse(input),
+    }
 }
 
 /// Match anything containing at least `required_num` recurring instances of `parser` matches
@@ -249,7 +296,7 @@ pub fn space1<'a>() -> impl Parser<'a, Vec<char>> {
 
 /// Match zero ore more spaces
 pub fn space0<'a>() -> impl Parser<'a, Vec<char>> {
-    one_or_more(whitespace_char)
+    zero_or_more(whitespace_char)
 }
 
 /*********/
@@ -377,6 +424,22 @@ mod tests {
         assert_eq!(
             quoted_string().parse(ex_str),
             Ok(("", (&ex_str[1..ex_str.len() - 1]).into()))
+        );
+    }
+
+    #[test]
+    fn whitespace_wrap_identifier_sorrounded_by_whitespace() {
+        assert_eq!(
+            whitespace_wrap(identifier).parse("\n\n  hello  \n\n"),
+            Ok(("", "hello".into())),
+        );
+    }
+
+    #[test]
+    fn whitespace_wrap_identifier_no_whitespace_on_one_side() {
+        assert_eq!(
+            whitespace_wrap(identifier).parse("hello\n\n"),
+            Ok(("", "hello".into())),
         );
     }
 }

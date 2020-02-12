@@ -4,12 +4,21 @@ use crate::parse::*;
 /* XML element struct */
 /**********************/
 
+/// Representation of generic XML Element
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Element {
     name: String,
     attributes: Vec<(String, String)>,
     children: Vec<Element>,
 }
+
+/***************/
+/* XML parsers */
+/***************/
+
+/// Some useful type aliases
+type RawAttrLst = Vec<(String, String)>;
+type RawSingleEle = (String, RawAttrLst);
 
 /// Match xml element argument along with its value
 ///
@@ -19,96 +28,52 @@ fn attr_pair<'a>() -> impl Parser<'a, (String, String)> {
 }
 
 /// Match xml element argument list
-fn attr_list<'a>() -> impl Parser<'a, Vec<(String, String)>> {
+fn attr_list<'a>() -> impl Parser<'a, RawAttrLst> {
     zero_or_more(right(space1(), attr_pair()))
 }
 
 /// Utility that matches internal structures of element
-fn ele_internals<'a>() -> impl Parser<'a, Element> {
-    let raw_parser = pair(identifier, attr_list());
-
-    raw_parser.map(|(name, attributes)| Element {
-        name,
-        attributes,
-        ..Default::default()
-    })
+fn ele_internals<'a>() -> impl Parser<'a, RawSingleEle> {
+    pair(identifier, attr_list())
 }
 
 /// Match XML opening element
-///
-/// e.g. in `<hello-there arg="val" arg2="val2"> ... <\hello-there>` the following is matched:
-/// `<hello-there arg=...>`.
-fn open_ele<'a>() -> impl Parser<'a, Element> {
+fn open_ele<'a>() -> impl Parser<'a, RawSingleEle> {
     sorround(literal("<"), ele_internals(), literal(">"))
 }
 
 /// Match XML closing element
-///
-/// e.g. as in `<\closing>`
-fn close_ele<'a>() -> impl Parser<'a, Element> {
-    sorround(literal("<\\"), ele_internals(), literal(">"))
+fn close_ele<'a>(opening_name: String) -> impl Parser<'a, String> {
+    sorround(literal("<\\"), identifier, literal(">"))
+        .pred(move |closing_name| closing_name == &opening_name)
 }
 
-/// Match XML element into dedicated structure (`Element`)
+/// Match generic XML ele (with or without children) sorrounded by whitespace
+fn ele<'a>() -> impl Parser<'a, Element> {
+    whitespace_wrap(either(single_ele(), tree()))
+}
+
+/// Match single XML element (e.g. `<\hello-there>`, which has no children)
+/// into dedicated structure (`Element`)
 pub fn single_ele<'a>() -> impl Parser<'a, Element> {
-    sorround(literal("<"), ele_internals(), literal("\\>"))
+    sorround(literal("<"), ele_internals(), literal("\\>")).map(|(name, attributes)| Element {
+        name,
+        attributes,
+        children: vec![],
+    })
 }
 
-/// Match XML tree
-pub fn tree(input: &str) -> ParseResult<Element> {
-    // Try to match single element
-    if let ok @ Ok(_) = single_ele().parse(input) {
-        return ok;
-    }
+/// Match XML tree (NB. must have children)
+pub fn tree<'a>() -> impl Parser<'a, Element> {
+    println!("hello there!");
 
-    // Match real element tree
-    // Start with matching open element
-    open_ele()
-        .parse(input)
-        // Go on parsing
-        .and_then(
-            |(
-                rest,
-                Element {
-                    name: open_name,
-                    attributes,
-                    ..
-                },
-            )| {
-                // Match children
-                match one_or_more(right(space0(), tree)).parse(rest) {
-                    // Go on parsing
-                    Ok((rest, children)) => {
-                        // Match closing element
-                        right(space0(), close_ele()).parse(rest).and_then(
-                            |(
-                                rest,
-                                Element {
-                                    name: close_name, ..
-                                },
-                            )| {
-                                // Return an error if the closing element name doesn't correspond to the opening element's.
-                                if close_name == open_name {
-                                    // Final result
-                                    Ok((
-                                        rest,
-                                        Element {
-                                            name: open_name,
-                                            attributes,
-                                            children,
-                                        },
-                                    ))
-                                } else {
-                                    Err(rest)
-                                }
-                            },
-                        )
-                    }
-                    // TODO: redundant...
-                    Err(err) => Err(err),
-                }
-            },
-        )
+    open_ele().and_then(|(name, attributes)| {
+        pair(zero_or_more(ele()), close_ele(name)).map(move |(children, name)| Element {
+            name,
+            attributes: attributes.clone(),
+            children,
+        })
+    })
 }
 
 #[cfg(test)]
@@ -150,7 +115,7 @@ mod tests {
         );
 
         assert_eq!(
-            tree(str_tree),
+            tree().parse(str_tree),
             Ok((
                 "",
                 Element {
