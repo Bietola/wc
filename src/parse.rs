@@ -115,14 +115,20 @@ pub fn identifier(input: &str) -> ParseResult<String> {
     }
 }
 
-/// Match a simple string.
-pub fn simple_string<'a>() -> impl Parser<'a, String> {
-    zero_or_more(any_char.pred(|c| *c != '\"')).map(|output| output.into_iter().collect())
+/// Match a simple alphanumeric string.
+pub fn word<'a>() -> impl Parser<'a, String> {
+    zero_or_more(any_char.pred(|c| !c.is_whitespace())).map(|output| output.into_iter().collect())
 }
 
 /// Match any string surrounded by quotes
 pub fn quoted_string<'a>() -> impl Parser<'a, String> {
-    right(literal("\""), left(simple_string(), literal("\"")))
+    right(
+        literal("\""),
+        left(
+            zero_or_more(any_char.pred(|c| *c != '\"')).map(|output| output.into_iter().collect()),
+            literal("\""),
+        ),
+    )
 }
 
 /// Match first using `parser1` and then `parser2` (in that order), then return the results of both
@@ -401,19 +407,19 @@ mod tests {
 
     #[test]
     fn opt_optional_exclamation_point() {
-        let phrase = one_or_more(left(simple_string(), space0()));
-        let phrase_with_opt_exclamation = left(phrase, opt(literal("!")));
+        let phrase = left(one_or_more(left(word(), space0()).pred(|out| out != "end")), literal("end"));
+        let phrase_with_opt_exclamation = left(phrase, opt(pair(space0(), literal("!"))));
 
         // With exclamation.
         assert_eq!(
-            Ok(("", vec!["uga".into(), "uguga".into()])),
-            phrase_with_opt_exclamation.parse("ug ugug")
+            Ok(("", vec!["uga".into(), "ugauga".into()])),
+            phrase_with_opt_exclamation.parse("uga ugauga end")
         );
 
         // Without.
         assert_eq!(
-            Ok(("", vec!["ug".into(), "ugug".into()])),
-            phrase_with_opt_exclamation.parse("ug ugug!")
+            Ok(("", vec!["uga".into(), "ugauga".into()])),
+            phrase_with_opt_exclamation.parse("uga ugauga end !")
         );
     }
 
