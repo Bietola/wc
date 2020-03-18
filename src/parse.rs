@@ -115,13 +115,18 @@ pub fn identifier(input: &str) -> ParseResult<String> {
     }
 }
 
+/// Match a simple string.
+pub fn simple_string<'a>() -> impl Parser<'a, String> {
+    zero_or_more(any_char.pred(|c| *c != '\"'))
+        .map(|output| output.into_iter().collect())
+}
+
 /// Match any string surrounded by quotes
 pub fn quoted_string<'a>() -> impl Parser<'a, String> {
     right(
         literal("\""),
-        left(zero_or_more(any_char.pred(|c| *c != '\"')), literal("\"")),
+        left(simple_string(), literal("\"")),
     )
-    .map(|output| output.into_iter().collect())
 }
 
 /// Match first using `parser1` and then `parser2` (in that order), then return the results of both
@@ -256,6 +261,17 @@ where
     at_least(parser, 1)
 }
 
+/// Match one or more instances of `parser` matches
+pub fn opt<'a, P, A>(parser: P) -> impl Parser<'a, Option<A>>
+where
+    P: Parser<'a, A>,
+{
+    move |input| match parser.parse(input) {
+        Ok((rest, res)) => Ok((rest, Some(res))),
+        Err(_) => Ok((input, None)),
+    }
+}
+
 /// Match next instance of `parser` match and pipe result to `the_pred`; return valid match only if `the_pred`
 /// is valid on said result
 /// TODO: use monad
@@ -377,6 +393,24 @@ mod tests {
         assert_eq!(parse_letters_a.parse("aaba"), Ok(("ba", vec![(), ()])),);
 
         assert_eq!(parse_letters_a.parse("ba"), Err("ba"));
+    }
+
+    #[test]
+    fn opt_optional_exclamation_point() {
+        let phrase = one_or_more(left(simple_string(), space0()));
+        let phrase_with_opt_exclamation = left(phrase, opt(literal("!")));
+
+        // With exclamation.
+        assert_eq!(
+            Ok(("", vec!["uga".into(), "uguga".into()])),
+            phrase_with_opt_exclamation.parse("ug ugug")
+        );
+
+        // Without.
+        assert_eq!(
+            Ok(("", vec!["ug".into(), "ugug".into()])),
+            phrase_with_opt_exclamation.parse("ug ugug!")
+        );
     }
 
     #[test]
