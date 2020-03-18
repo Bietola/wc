@@ -117,16 +117,12 @@ pub fn identifier(input: &str) -> ParseResult<String> {
 
 /// Match a simple string.
 pub fn simple_string<'a>() -> impl Parser<'a, String> {
-    zero_or_more(any_char.pred(|c| *c != '\"'))
-        .map(|output| output.into_iter().collect())
+    zero_or_more(any_char.pred(|c| *c != '\"')).map(|output| output.into_iter().collect())
 }
 
 /// Match any string surrounded by quotes
 pub fn quoted_string<'a>() -> impl Parser<'a, String> {
-    right(
-        literal("\""),
-        left(simple_string(), literal("\"")),
-    )
+    right(literal("\""), left(simple_string(), literal("\"")))
 }
 
 /// Match first using `parser1` and then `parser2` (in that order), then return the results of both
@@ -174,19 +170,23 @@ where
 /// Like `pair`, but discard the result of the left parser (`parser1`)
 pub fn right<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, R2>
 where
-    P1: Parser<'a, R1>,
-    P2: Parser<'a, R2>,
+    R1: 'a,
+    R2: 'a,
+    P1: Parser<'a, R1> + 'a,
+    P2: Parser<'a, R2> + 'a,
 {
-    map(pair(parser1, parser2), |(_, rhs)| rhs)
+    pair(parser1, parser2).map(|(_, rhs)| rhs)
 }
 
 /// Like `pair`, but discard the result of the right parser (`parser2`)
 pub fn left<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, R1>
 where
-    P1: Parser<'a, R1>,
-    P2: Parser<'a, R2>,
+    R1: 'a,
+    R2: 'a,
+    P1: Parser<'a, R1> + 'a,
+    P2: Parser<'a, R2> + 'a,
 {
-    map(pair(parser1, parser2), |(lhs, _)| lhs)
+    pair(parser1, parser2).map(|(lhs, _)| lhs)
 }
 
 /// Sorrounds center parser with two parsers, ignoring the sorrounding parsers.
@@ -196,9 +196,12 @@ pub fn sorround<'a, P1, P2, P3, R1, R2, R3>(
     closing_par: P3,
 ) -> impl Parser<'a, R2>
 where
-    P1: Parser<'a, R1>,
-    P2: Parser<'a, R2>,
-    P3: Parser<'a, R3>,
+    R1: 'a,
+    R2: 'a,
+    R3: 'a,
+    P1: Parser<'a, R1> + 'a,
+    P2: Parser<'a, R2> + 'a,
+    P3: Parser<'a, R3> + 'a,
 {
     right(opening_par, left(center_par, closing_par))
 }
@@ -206,7 +209,8 @@ where
 /// Matches like `parser`, but allows matches to be sorrounded by albitrary whitespace.
 pub fn whitespace_wrap<'a, P, Output>(parser: P) -> impl Parser<'a, Output>
 where
-    P: Parser<'a, Output>,
+    Output: 'a,
+    P: Parser<'a, Output> + 'a,
 {
     sorround(space0(), parser, space0())
 }
